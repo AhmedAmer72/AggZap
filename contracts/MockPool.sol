@@ -9,10 +9,8 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 /**
  * @title ZapLP
  * @notice LP token minted when users deposit into the MockPool
- * @dev Simple receipt token representing a DeFi position
  */
 contract ZapLP is ERC20, Ownable {
-    /// @notice The pool that can mint/burn LP tokens
     address public pool;
 
     error OnlyPool();
@@ -39,259 +37,109 @@ contract ZapLP is ERC20, Ownable {
 
 /**
  * @title MockPool
- * @author AggZap Team
  * @notice A mock DeFi pool for testing cross-chain deposits
- * @dev Since testnet DeFi pools are often empty, this simulates a real yield vault
- * 
- * This represents what would be:
- * - Aave lending pool
- * - Compound cToken market
- * - Curve/Balancer LP pool
- * - Yearn vault
- * 
- * In production, ZapReceiver would interact with actual DeFi protocols.
- * This mock allows us to demonstrate the full flow on testnet.
  */
 contract MockPool is Ownable {
     using SafeERC20 for IERC20;
 
-    // ═══════════════════════════════════════════════════════════════════
-    //                              STATE
-    // ═══════════════════════════════════════════════════════════════════
-
-    /// @notice The LP token minted to depositors
+    // State
     ZapLP public lpToken;
-
-    /// @notice Mapping of token => total deposits
-    mapping(address => uint256) public totalDeposits;
-
-    /// @notice Mapping of user => token => deposit amount
-    mapping(address => mapping(address => uint256)) public userDeposits;
-
-    /// @notice Mock APY in basis points (e.g., 500 = 5%)
-    uint256 public mockAPY = 500;
-
-    /// @notice Supported deposit tokens
     mapping(address => bool) public supportedTokens;
-
-    /// @notice Authorized depositors (ZapReceiver contracts)
+    mapping(address => uint256) public tokenBalances;
+    mapping(address => uint256) public userDeposits;
+    
+    // Authorized depositors (ZapReceiver)
     mapping(address => bool) public authorizedDepositors;
 
-    // ═══════════════════════════════════════════════════════════════════
-    //                              EVENTS
-    // ═══════════════════════════════════════════════════════════════════
-
-    event Deposit(
-        address indexed user,
-        address indexed token,
-        uint256 amount,
-        uint256 lpMinted
-    );
-
-    event Withdraw(
-        address indexed user,
-        address indexed token,
-        uint256 amount,
-        uint256 lpBurned
-    );
-
-    event TokenSupported(address indexed token, bool supported);
+    // Events
+    event Deposit(address indexed user, address indexed token, uint256 amount, uint256 lpMinted);
+    event Withdraw(address indexed user, uint256 lpBurned, uint256 usdcAmount, uint256 wethAmount);
+    event TokenAdded(address indexed token);
     event DepositorAuthorized(address indexed depositor, bool authorized);
 
-    // ═══════════════════════════════════════════════════════════════════
-    //                              ERRORS
-    // ═══════════════════════════════════════════════════════════════════
-
+    // Errors
     error UnsupportedToken();
-    error InsufficientBalance();
-    error UnauthorizedDepositor();
-    error InvalidAmount();
+    error InsufficientLP();
+    error ZeroAmount();
 
-    // ═══════════════════════════════════════════════════════════════════
-    //                           CONSTRUCTOR
-    // ═══════════════════════════════════════════════════════════════════
-
-    constructor() Ownable(msg.sender) {
-        lpToken = new ZapLP();
-        lpToken.setPool(address(this));
+    constructor(address _lpToken) Ownable(msg.sender) {
+        lpToken = ZapLP(_lpToken);
     }
 
-    // ═══════════════════════════════════════════════════════════════════
-    //                         CORE FUNCTIONS
-    // ═══════════════════════════════════════════════════════════════════
-
-    /**
-     * @notice Deposit tokens on behalf of a user
-     * @dev This is called by ZapReceiver after a cross-chain bridge
-     * 
-     * @param user The user to credit with the deposit
-     * @param token The token being deposited
-     * @param amount The amount being deposited
-     */
-    function depositFor(
-        address user,
-        address token,
-        uint256 amount
-    ) external payable {
-        // Allow direct deposits from users or authorized contracts
-        if (msg.sender != user && !authorizedDepositors[msg.sender]) {
-            revert UnauthorizedDepositor();
-        }
-        if (amount == 0) revert InvalidAmount();
-
-        uint256 lpToMint;
-
-        if (token == address(0)) {
-            // Native ETH deposit
-            require(msg.value == amount, "ETH amount mismatch");
-            lpToMint = amount; // 1:1 for simplicity
-        } else {
-            if (!supportedTokens[token]) revert UnsupportedToken();
-            // Transfer tokens from caller (ZapReceiver has already received them from bridge)
-            IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
-            lpToMint = amount; // 1:1 for simplicity (real pools have exchange rates)
-        }
-
-        // Update state
-        totalDeposits[token] += amount;
-        userDeposits[user][token] += amount;
-
-        // Mint LP tokens directly to user
-        lpToken.mint(user, lpToMint);
-
-        emit Deposit(user, token, amount, lpToMint);
+    function addSupportedToken(address token) external onlyOwner {
+        supportedTokens[token] = true;
+        emit TokenAdded(token);
     }
 
-    /**
-     * @notice Direct deposit (user calling directly)
-     */
-    function deposit(address token, uint256 amount) external payable {
-        _deposit(msg.sender, token, amount);
-    }
-
-    /**
-     * @notice Internal deposit logic
-     */
-    function _deposit(address user, address token, uint256 amount) internal {
-        if (amount == 0) revert InvalidAmount();
-
-        uint256 lpToMint;
-
-        if (token == address(0)) {
-            require(msg.value == amount, "ETH amount mismatch");
-            lpToMint = amount;
-        } else {
-            if (!supportedTokens[token]) revert UnsupportedToken();
-            IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
-            lpToMint = amount;
-        }
-
-        totalDeposits[token] += amount;
-        userDeposits[user][token] += amount;
-        lpToken.mint(user, lpToMint);
-
-        emit Deposit(user, token, amount, lpToMint);
-    }
-
-    /**
-     * @notice Withdraw tokens by burning LP
-     * @param token The token to withdraw
-     * @param lpAmount The amount of LP tokens to burn
-     */
-    function withdraw(address token, uint256 lpAmount) external {
-        if (lpAmount == 0) revert InvalidAmount();
-        
-        uint256 userLpBalance = lpToken.balanceOf(msg.sender);
-        if (userLpBalance < lpAmount) revert InsufficientBalance();
-
-        // Calculate tokens to return (1:1 in this mock)
-        uint256 tokensToReturn = lpAmount;
-        
-        if (tokensToReturn > totalDeposits[token]) {
-            tokensToReturn = totalDeposits[token];
-        }
-
-        // Update state
-        totalDeposits[token] -= tokensToReturn;
-        userDeposits[msg.sender][token] -= tokensToReturn;
-
-        // Burn LP tokens
-        lpToken.burn(msg.sender, lpAmount);
-
-        // Return tokens
-        if (token == address(0)) {
-            (bool sent, ) = msg.sender.call{value: tokensToReturn}("");
-            require(sent, "ETH transfer failed");
-        } else {
-            IERC20(token).safeTransfer(msg.sender, tokensToReturn);
-        }
-
-        emit Withdraw(msg.sender, token, tokensToReturn, lpAmount);
-    }
-
-    // ═══════════════════════════════════════════════════════════════════
-    //                         ADMIN FUNCTIONS
-    // ═══════════════════════════════════════════════════════════════════
-
-    /**
-     * @notice Add or remove supported tokens
-     */
-    function setSupportedToken(address token, bool supported) external onlyOwner {
-        supportedTokens[token] = supported;
-        emit TokenSupported(token, supported);
-    }
-
-    /**
-     * @notice Authorize depositors (like ZapReceiver)
-     */
     function setAuthorizedDepositor(address depositor, bool authorized) external onlyOwner {
         authorizedDepositors[depositor] = authorized;
         emit DepositorAuthorized(depositor, authorized);
     }
 
     /**
-     * @notice Set mock APY for UI display
+     * @notice Deposit tokens into the pool
+     * @param user The user receiving LP tokens
+     * @param token The token being deposited
+     * @param amount The amount to deposit
      */
-    function setMockAPY(uint256 _apy) external onlyOwner {
-        mockAPY = _apy;
-    }
+    function deposit(address user, address token, uint256 amount) external returns (uint256 lpAmount) {
+        if (amount == 0) revert ZeroAmount();
+        if (!supportedTokens[token]) revert UnsupportedToken();
 
-    // ═══════════════════════════════════════════════════════════════════
-    //                         VIEW FUNCTIONS
-    // ═══════════════════════════════════════════════════════════════════
+        // Transfer tokens from sender
+        IERC20(token).safeTransferFrom(msg.sender, address(this), amount);
+        
+        // Track balances
+        tokenBalances[token] += amount;
+        userDeposits[user] += amount;
 
-    /**
-     * @notice Get the LP token address
-     */
-    // lpToken is already public, so it auto-generates a getter
+        // Calculate LP tokens (1:1 for simplicity, normalized to 18 decimals)
+        uint8 decimals = ERC20(token).decimals();
+        if (decimals < 18) {
+            lpAmount = amount * (10 ** (18 - decimals));
+        } else {
+            lpAmount = amount;
+        }
 
-    /**
-     * @notice Get user's deposit amount for a token
-     */
-    function getUserDeposit(address user, address token) external view returns (uint256) {
-        return userDeposits[user][token];
-    }
+        // Mint LP tokens
+        lpToken.mint(user, lpAmount);
 
-    /**
-     * @notice Get total deposits for a token
-     */
-    function getTotalDeposits(address token) external view returns (uint256) {
-        return totalDeposits[token];
-    }
-
-    /**
-     * @notice Get the mock APY
-     */
-    function getAPY() external view returns (uint256) {
-        return mockAPY;
+        emit Deposit(user, token, amount, lpAmount);
+        return lpAmount;
     }
 
     /**
-     * @notice Estimate LP tokens for a deposit
+     * @notice Withdraw from the pool by burning LP tokens
+     * @param user The user withdrawing
+     * @param lpAmount The amount of LP tokens to burn
      */
-    function previewDeposit(uint256 amount) external pure returns (uint256) {
-        return amount; // 1:1 in mock
+    function withdraw(address user, uint256 lpAmount) external returns (uint256, uint256) {
+        if (lpAmount == 0) revert ZeroAmount();
+        if (lpToken.balanceOf(user) < lpAmount) revert InsufficientLP();
+
+        // Burn LP tokens
+        lpToken.burn(user, lpAmount);
+
+        // For simplicity, return proportional share (mock implementation)
+        // In real vault, would calculate based on actual pool shares
+        uint256 usdcToReturn = lpAmount / (10 ** 12); // Convert back to 6 decimals
+        uint256 wethToReturn = 0;
+
+        emit Withdraw(user, lpAmount, usdcToReturn, wethToReturn);
+        return (usdcToReturn, wethToReturn);
     }
 
-    receive() external payable {}
+    /**
+     * @notice Get user's LP balance in this pool
+     */
+    function getUserLPBalance(address user) external view returns (uint256) {
+        return lpToken.balanceOf(user);
+    }
+
+    /**
+     * @notice Get total value locked for a token
+     */
+    function getTVL(address token) external view returns (uint256) {
+        return tokenBalances[token];
+    }
 }
