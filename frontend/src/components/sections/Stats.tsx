@@ -1,8 +1,10 @@
 'use client';
 
-import { motion, useMotionValue, useSpring, useTransform } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { TrendingUp, Users, DollarSign, Activity, ArrowUpRight, Zap, Clock, Shield } from 'lucide-react';
-import { useEffect, useState, useRef } from 'react';
+import { useState } from 'react';
+import { useTotalTVL, useZapStats, useLPTotalSupply } from '@/hooks/useContracts';
+import { formatAmount } from '@/lib/config';
 
 interface StatItemProps {
   label: string;
@@ -11,54 +13,10 @@ interface StatItemProps {
   icon: React.ElementType;
   color: string;
   index: number;
+  isLive?: boolean;
 }
 
-function AnimatedNumber({ value, suffix = '' }: { value: number; suffix?: string }) {
-  const [displayValue, setDisplayValue] = useState(0);
-  const ref = useRef<HTMLSpanElement>(null);
-  const [hasAnimated, setHasAnimated] = useState(false);
-
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting && !hasAnimated) {
-          setHasAnimated(true);
-          const duration = 2000;
-          const steps = 60;
-          const increment = value / steps;
-          let current = 0;
-          
-          const timer = setInterval(() => {
-            current += increment;
-            if (current >= value) {
-              setDisplayValue(value);
-              clearInterval(timer);
-            } else {
-              setDisplayValue(Math.floor(current));
-            }
-          }, duration / steps);
-
-          return () => clearInterval(timer);
-        }
-      },
-      { threshold: 0.5 }
-    );
-
-    if (ref.current) {
-      observer.observe(ref.current);
-    }
-
-    return () => observer.disconnect();
-  }, [value, hasAnimated]);
-
-  return (
-    <span ref={ref}>
-      {displayValue.toLocaleString()}{suffix}
-    </span>
-  );
-}
-
-function StatCard({ label, value, change, icon: Icon, color, index }: StatItemProps) {
+function StatCard({ label, value, change, icon: Icon, color, index, isLive }: StatItemProps) {
   const [isHovered, setIsHovered] = useState(false);
 
   return (
@@ -78,13 +36,21 @@ function StatCard({ label, value, change, icon: Icon, color, index }: StatItemPr
 
       {/* Card */}
       <div className="relative bg-gradient-to-b from-white/[0.08] to-white/[0.02] backdrop-blur-xl rounded-2xl p-6 border border-white/10 group-hover:border-white/20 transition-all duration-500 h-full">
+        {/* Live indicator */}
+        {isLive && (
+          <div className="absolute top-3 right-3 flex items-center gap-1.5">
+            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+            <span className="text-xs text-gray-500">Live</span>
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex items-start justify-between mb-4">
-          <motion.div 
+          <motion.div
             className={`p-3 rounded-xl bg-gradient-to-br ${color}`}
-            animate={{ 
+            animate={{
               scale: isHovered ? 1.1 : 1,
-              rotate: isHovered ? 5 : 0 
+              rotate: isHovered ? 5 : 0
             }}
             transition={{ type: 'spring', stiffness: 400 }}
           >
@@ -100,7 +66,7 @@ function StatCard({ label, value, change, icon: Icon, color, index }: StatItemPr
         </div>
 
         {/* Value */}
-        <motion.h3 
+        <motion.h3
           className="text-3xl md:text-4xl font-bold text-white mb-2"
           animate={{ scale: isHovered ? 1.02 : 1 }}
         >
@@ -123,44 +89,56 @@ function StatCard({ label, value, change, icon: Icon, color, index }: StatItemPr
   );
 }
 
-const stats = [
-  {
-    label: 'Total Value Locked',
-    value: '$43.7M',
-    change: '+24.5%',
-    icon: DollarSign,
-    color: 'from-green-400 to-emerald-500',
-  },
-  {
-    label: 'Total Zaps',
-    value: '128,291',
-    change: '+12.3%',
-    icon: Zap,
-    color: 'from-purple-400 to-pink-500',
-  },
-  {
-    label: 'Unique Users',
-    value: '15,432',
-    change: '+18.7%',
-    icon: Users,
-    color: 'from-blue-400 to-cyan-500',
-  },
-  {
-    label: 'Avg. APY',
-    value: '12.5%',
-    change: '+2.1%',
-    icon: TrendingUp,
-    color: 'from-orange-400 to-amber-500',
-  },
-];
-
 const highlights = [
-  { icon: Clock, text: 'Avg. 28s bridge time', color: 'text-cyan-400' },
-  { icon: Shield, text: '0 security incidents', color: 'text-green-400' },
-  { icon: Activity, text: '99.9% uptime', color: 'text-purple-400' },
+  { icon: Clock, text: 'Instant deposits', color: 'text-cyan-400' },
+  { icon: Shield, text: 'Audited contracts', color: 'text-green-400' },
+  { icon: Activity, text: 'Polygon Amoy Testnet', color: 'text-purple-400' },
 ];
 
 export function Stats() {
+  // Fetch real data from contracts
+  const { totalTvlUsd, isLoading: tvlLoading } = useTotalTVL();
+  const { stats: zapStats, isLoading: statsLoading } = useZapStats();
+  const { totalSupply: lpSupply, isLoading: supplyLoading } = useLPTotalSupply();
+
+  const isLoading = tvlLoading || statsLoading || supplyLoading;
+
+  // Build stats array with real data
+  const stats = [
+    {
+      label: 'Total Value Locked',
+      value: isLoading ? '...' : `$${formatAmount(totalTvlUsd)}`,
+      change: 'Live',
+      icon: DollarSign,
+      color: 'from-green-400 to-emerald-500',
+      isLive: true,
+    },
+    {
+      label: 'Total Zaps',
+      value: isLoading ? '...' : zapStats?.totalZaps.toString() || '0',
+      change: 'Testnet',
+      icon: Zap,
+      color: 'from-purple-400 to-pink-500',
+      isLive: true,
+    },
+    {
+      label: 'LP Tokens Minted',
+      value: isLoading ? '...' : formatAmount(lpSupply),
+      change: 'Live',
+      icon: Users,
+      color: 'from-blue-400 to-cyan-500',
+      isLive: true,
+    },
+    {
+      label: 'Protocol Fee',
+      value: isLoading ? '...' : `${(zapStats?.feeBps || 0) / 100}%`,
+      change: 'Fixed',
+      icon: TrendingUp,
+      color: 'from-orange-400 to-amber-500',
+      isLive: true,
+    },
+  ];
+
   return (
     <section className="py-20 relative overflow-hidden">
       {/* Background */}
@@ -183,11 +161,12 @@ export function Stats() {
             className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-cyan-500/10 border border-cyan-500/20 mb-4"
           >
             <Activity className="w-4 h-4 text-cyan-400" />
-            <span className="text-sm font-medium text-gray-300">Protocol Stats</span>
+            <span className="text-sm font-medium text-gray-300">Live Protocol Stats</span>
           </motion.div>
           <h2 className="text-3xl md:text-4xl font-bold text-white">
-            Growing <span className="bg-gradient-to-r from-purple-400 via-pink-400 to-cyan-400 bg-clip-text text-transparent">Every Day</span>
+            On-Chain <span className="bg-gradient-to-r from-purple-400 via-pink-400 to-cyan-400 bg-clip-text text-transparent">Data</span>
           </h2>
+          <p className="text-gray-400 mt-2">Real-time statistics from deployed contracts on Polygon Amoy</p>
         </motion.div>
 
         {/* Stats Grid */}

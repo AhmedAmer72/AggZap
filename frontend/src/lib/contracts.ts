@@ -1,260 +1,380 @@
-// Contract ABIs for frontend integration
+// Contract ABIs for AggZap frontend integration
+// These match the deployed contracts on Polygon Amoy
 
-export const ZAP_SENDER_ABI = [
+export const MOCK_USDC_ABI = [
   {
-    inputs: [
-      { internalType: "address", name: "_bridge", type: "address" },
-      { internalType: "address", name: "_feeRecipient", type: "address" }
-    ],
-    stateMutability: "nonpayable",
-    type: "constructor"
-  },
-  {
-    inputs: [],
-    name: "FeeTooHigh",
-    type: "error"
-  },
-  {
-    inputs: [],
-    name: "InvalidAmount",
-    type: "error"
-  },
-  {
-    inputs: [],
-    name: "InvalidBridgeAddress",
-    type: "error"
-  },
-  {
-    inputs: [],
-    name: "InvalidDestinationReceiver",
-    type: "error"
-  },
-  {
-    inputs: [],
-    name: "TransferFailed",
-    type: "error"
-  },
-  {
-    inputs: [],
-    name: "UnsupportedToken",
-    type: "error"
-  },
-  {
-    anonymous: false,
-    inputs: [
-      { indexed: true, internalType: "address", name: "user", type: "address" },
-      { indexed: true, internalType: "address", name: "token", type: "address" },
-      { indexed: false, internalType: "uint256", name: "amount", type: "uint256" },
-      { indexed: false, internalType: "uint32", name: "destinationNetwork", type: "uint32" },
-      { indexed: false, internalType: "address", name: "destinationReceiver", type: "address" },
-      { indexed: true, internalType: "bytes32", name: "zapId", type: "bytes32" }
-    ],
-    name: "ZapInitiated",
-    type: "event"
+    inputs: [{ name: 'account', type: 'address' }],
+    name: 'balanceOf',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
   },
   {
     inputs: [
-      { internalType: "address", name: "destinationZapContract", type: "address" },
-      { internalType: "address", name: "token", type: "address" },
-      { internalType: "uint256", name: "amount", type: "uint256" },
-      { internalType: "uint32", name: "destinationNetworkId", type: "uint32" }
+      { name: 'spender', type: 'address' },
+      { name: 'amount', type: 'uint256' },
     ],
-    name: "zapLiquidity",
-    outputs: [{ internalType: "bytes32", name: "zapId", type: "bytes32" }],
-    stateMutability: "nonpayable",
-    type: "function"
+    name: 'approve',
+    outputs: [{ name: '', type: 'bool' }],
+    stateMutability: 'nonpayable',
+    type: 'function',
   },
   {
     inputs: [
-      { internalType: "address", name: "destinationZapContract", type: "address" },
-      { internalType: "uint32", name: "destinationNetworkId", type: "uint32" }
+      { name: 'owner', type: 'address' },
+      { name: 'spender', type: 'address' },
     ],
-    name: "zapLiquidityETH",
-    outputs: [{ internalType: "bytes32", name: "zapId", type: "bytes32" }],
-    stateMutability: "payable",
-    type: "function"
-  },
-  {
-    inputs: [{ internalType: "uint256", name: "amount", type: "uint256" }],
-    name: "calculateFee",
-    outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
-    stateMutability: "view",
-    type: "function"
+    name: 'allowance',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
   },
   {
     inputs: [],
-    name: "feeBps",
-    outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
-    stateMutability: "view",
-    type: "function"
+    name: 'decimals',
+    outputs: [{ name: '', type: 'uint8' }],
+    stateMutability: 'view',
+    type: 'function',
   },
   {
     inputs: [],
-    name: "getStats",
-    outputs: [
-      { internalType: "uint256", name: "_totalZaps", type: "uint256" },
-      { internalType: "uint256", name: "_totalVolume", type: "uint256" },
-      { internalType: "uint256", name: "_feeBps", type: "uint256" }
-    ],
-    stateMutability: "view",
-    type: "function"
+    name: 'symbol',
+    outputs: [{ name: '', type: 'string' }],
+    stateMutability: 'view',
+    type: 'function',
   },
   {
-    inputs: [{ internalType: "address", name: "token", type: "address" }],
-    name: "isTokenSupported",
-    outputs: [{ internalType: "bool", name: "", type: "bool" }],
-    stateMutability: "view",
-    type: "function"
-  }
+    inputs: [
+      { name: 'to', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+    ],
+    name: 'mint',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
 ] as const;
 
-export const ZAP_RECEIVER_ABI = [
+export const MOCK_WETH_ABI = MOCK_USDC_ABI;
+
+export const ZAP_LP_ABI = [
   {
-    inputs: [{ internalType: "address", name: "_bridge", type: "address" }],
-    stateMutability: "nonpayable",
-    type: "constructor"
-  },
-  {
-    anonymous: false,
-    inputs: [
-      { indexed: true, internalType: "address", name: "user", type: "address" },
-      { indexed: true, internalType: "address", name: "pool", type: "address" },
-      { indexed: true, internalType: "address", name: "token", type: "address" },
-      { indexed: false, internalType: "uint256", name: "amount", type: "uint256" },
-      { indexed: false, internalType: "uint256", name: "lpReceived", type: "uint256" }
-    ],
-    name: "DepositExecuted",
-    type: "event"
-  },
-  {
-    anonymous: false,
-    inputs: [
-      { indexed: true, internalType: "address", name: "user", type: "address" },
-      { indexed: true, internalType: "address", name: "token", type: "address" },
-      { indexed: false, internalType: "uint256", name: "amount", type: "uint256" },
-      { indexed: false, internalType: "uint32", name: "originNetwork", type: "uint32" },
-      { indexed: false, internalType: "address", name: "originSender", type: "address" }
-    ],
-    name: "ZapReceived",
-    type: "event"
-  },
-  {
-    inputs: [
-      { internalType: "address", name: "originAddress", type: "address" },
-      { internalType: "uint32", name: "originNetwork", type: "uint32" },
-      { internalType: "bytes", name: "data", type: "bytes" }
-    ],
-    name: "onMessageReceived",
-    outputs: [],
-    stateMutability: "payable",
-    type: "function"
+    inputs: [{ name: 'account', type: 'address' }],
+    name: 'balanceOf',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
   },
   {
     inputs: [],
-    name: "getStats",
-    outputs: [
-      { internalType: "uint256", name: "_totalDeposits", type: "uint256" },
-      { internalType: "uint256", name: "_totalVolume", type: "uint256" }
-    ],
-    stateMutability: "view",
-    type: "function"
-  }
+    name: 'decimals',
+    outputs: [{ name: '', type: 'uint8' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'symbol',
+    outputs: [{ name: '', type: 'string' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'totalSupply',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
 ] as const;
 
 export const MOCK_POOL_ABI = [
   {
+    inputs: [{ name: '_lpToken', type: 'address' }],
+    stateMutability: 'nonpayable',
+    type: 'constructor',
+  },
+  {
     inputs: [],
-    stateMutability: "nonpayable",
-    type: "constructor"
+    name: 'lpToken',
+    outputs: [{ name: '', type: 'address' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [{ name: 'token', type: 'address' }],
+    name: 'supportedTokens',
+    outputs: [{ name: '', type: 'bool' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [{ name: 'token', type: 'address' }],
+    name: 'tokenBalances',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [{ name: 'user', type: 'address' }],
+    name: 'userDeposits',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [{ name: 'user', type: 'address' }],
+    name: 'getUserLPBalance',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [{ name: 'token', type: 'address' }],
+    name: 'getTVL',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [
+      { name: 'user', type: 'address' },
+      { name: 'token', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+    ],
+    name: 'deposit',
+    outputs: [{ name: 'lpAmount', type: 'uint256' }],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [
+      { name: 'user', type: 'address' },
+      { name: 'lpAmount', type: 'uint256' },
+    ],
+    name: 'withdraw',
+    outputs: [
+      { name: '', type: 'uint256' },
+      { name: '', type: 'uint256' },
+    ],
+    stateMutability: 'nonpayable',
+    type: 'function',
   },
   {
     anonymous: false,
     inputs: [
-      { indexed: true, internalType: "address", name: "user", type: "address" },
-      { indexed: true, internalType: "address", name: "token", type: "address" },
-      { indexed: false, internalType: "uint256", name: "amount", type: "uint256" },
-      { indexed: false, internalType: "uint256", name: "lpMinted", type: "uint256" }
+      { indexed: true, name: 'user', type: 'address' },
+      { indexed: true, name: 'token', type: 'address' },
+      { indexed: false, name: 'amount', type: 'uint256' },
+      { indexed: false, name: 'lpMinted', type: 'uint256' },
     ],
-    name: "Deposit",
-    type: "event"
+    name: 'Deposit',
+    type: 'event',
   },
   {
+    anonymous: false,
     inputs: [
-      { internalType: "address", name: "token", type: "address" },
-      { internalType: "uint256", name: "amount", type: "uint256" }
+      { indexed: true, name: 'user', type: 'address' },
+      { indexed: false, name: 'lpBurned', type: 'uint256' },
+      { indexed: false, name: 'usdcAmount', type: 'uint256' },
+      { indexed: false, name: 'wethAmount', type: 'uint256' },
     ],
-    name: "deposit",
-    outputs: [],
-    stateMutability: "payable",
-    type: "function"
+    name: 'Withdraw',
+    type: 'event',
   },
-  {
-    inputs: [
-      { internalType: "address", name: "user", type: "address" },
-      { internalType: "address", name: "token", type: "address" },
-      { internalType: "uint256", name: "amount", type: "uint256" }
-    ],
-    name: "depositFor",
-    outputs: [],
-    stateMutability: "payable",
-    type: "function"
-  },
-  {
-    inputs: [
-      { internalType: "address", name: "token", type: "address" },
-      { internalType: "uint256", name: "lpAmount", type: "uint256" }
-    ],
-    name: "withdraw",
-    outputs: [],
-    stateMutability: "nonpayable",
-    type: "function"
-  },
-  {
-    inputs: [],
-    name: "getAPY",
-    outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
-    stateMutability: "view",
-    type: "function"
-  },
-  {
-    inputs: [],
-    name: "lpToken",
-    outputs: [{ internalType: "contract ZapLP", name: "", type: "address" }],
-    stateMutability: "view",
-    type: "function"
-  }
 ] as const;
 
-export const ERC20_ABI = [
+export const ZAP_SENDER_ABI = [
   {
     inputs: [
-      { internalType: "address", name: "spender", type: "address" },
-      { internalType: "uint256", name: "amount", type: "uint256" }
+      { name: '_bridge', type: 'address' },
+      { name: '_feeRecipient', type: 'address' },
     ],
-    name: "approve",
-    outputs: [{ internalType: "bool", name: "", type: "bool" }],
-    stateMutability: "nonpayable",
-    type: "function"
-  },
-  {
-    inputs: [{ internalType: "address", name: "account", type: "address" }],
-    name: "balanceOf",
-    outputs: [{ internalType: "uint256", name: "", type: "uint256" }],
-    stateMutability: "view",
-    type: "function"
+    stateMutability: 'nonpayable',
+    type: 'constructor',
   },
   {
     inputs: [],
-    name: "decimals",
-    outputs: [{ internalType: "uint8", name: "", type: "uint8" }],
-    stateMutability: "view",
-    type: "function"
+    name: 'bridge',
+    outputs: [{ name: '', type: 'address' }],
+    stateMutability: 'view',
+    type: 'function',
   },
   {
     inputs: [],
-    name: "symbol",
-    outputs: [{ internalType: "string", name: "", type: "string" }],
-    stateMutability: "view",
-    type: "function"
-  }
+    name: 'feeBps',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'totalZaps',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'totalVolume',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [{ name: 'token', type: 'address' }],
+    name: 'supportedTokens',
+    outputs: [{ name: '', type: 'bool' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [{ name: 'amount', type: 'uint256' }],
+    name: 'calculateFee',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'getStats',
+    outputs: [
+      { name: '_totalZaps', type: 'uint256' },
+      { name: '_totalVolume', type: 'uint256' },
+      { name: '_feeBps', type: 'uint256' },
+    ],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [
+      { name: 'destinationZapContract', type: 'address' },
+      { name: 'token', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+      { name: 'destinationNetworkId', type: 'uint32' },
+    ],
+    name: 'zapLiquidity',
+    outputs: [{ name: 'zapId', type: 'bytes32' }],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [
+      { name: 'destinationZapContract', type: 'address' },
+      { name: 'destinationNetworkId', type: 'uint32' },
+    ],
+    name: 'zapLiquidityETH',
+    outputs: [{ name: 'zapId', type: 'bytes32' }],
+    stateMutability: 'payable',
+    type: 'function',
+  },
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true, name: 'user', type: 'address' },
+      { indexed: true, name: 'token', type: 'address' },
+      { indexed: false, name: 'amount', type: 'uint256' },
+      { indexed: false, name: 'destinationNetwork', type: 'uint32' },
+      { indexed: false, name: 'destinationReceiver', type: 'address' },
+      { indexed: true, name: 'zapId', type: 'bytes32' },
+    ],
+    name: 'ZapInitiated',
+    type: 'event',
+  },
+] as const;
+
+export const ZAP_RECEIVER_ABI = [
+  {
+    inputs: [{ name: '_bridge', type: 'address' }],
+    stateMutability: 'nonpayable',
+    type: 'constructor',
+  },
+  {
+    inputs: [],
+    name: 'totalDeposits',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'totalVolume',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'getStats',
+    outputs: [
+      { name: '_totalDeposits', type: 'uint256' },
+      { name: '_totalVolume', type: 'uint256' },
+    ],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    anonymous: false,
+    inputs: [
+      { indexed: true, name: 'user', type: 'address' },
+      { indexed: true, name: 'pool', type: 'address' },
+      { indexed: true, name: 'token', type: 'address' },
+      { indexed: false, name: 'amount', type: 'uint256' },
+      { indexed: false, name: 'lpReceived', type: 'uint256' },
+    ],
+    name: 'DepositExecuted',
+    type: 'event',
+  },
+] as const;
+
+// ERC20 standard ABI for generic token operations
+export const ERC20_ABI = [
+  {
+    inputs: [{ name: 'account', type: 'address' }],
+    name: 'balanceOf',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [
+      { name: 'spender', type: 'address' },
+      { name: 'amount', type: 'uint256' },
+    ],
+    name: 'approve',
+    outputs: [{ name: '', type: 'bool' }],
+    stateMutability: 'nonpayable',
+    type: 'function',
+  },
+  {
+    inputs: [
+      { name: 'owner', type: 'address' },
+      { name: 'spender', type: 'address' },
+    ],
+    name: 'allowance',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'decimals',
+    outputs: [{ name: '', type: 'uint8' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'symbol',
+    outputs: [{ name: '', type: 'string' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
+  {
+    inputs: [],
+    name: 'totalSupply',
+    outputs: [{ name: '', type: 'uint256' }],
+    stateMutability: 'view',
+    type: 'function',
+  },
 ] as const;

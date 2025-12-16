@@ -1,111 +1,132 @@
-// Network and contract configuration
+// Network and contract configuration for AggZap
+// Using deployed contracts on Polygon Amoy testnet
 
 export const NETWORKS = {
-  POLYGON_POS: {
-    id: 137,
-    name: 'Polygon PoS',
-    icon: '🟣',
-    rpcUrl: 'https://polygon-rpc.com',
-    explorer: 'https://polygonscan.com',
-    networkId: 2, // AggLayer network ID
-  },
-  POLYGON_ZKEVM: {
-    id: 1101,
-    name: 'Polygon zkEVM',
-    icon: '🔵',
-    rpcUrl: 'https://zkevm-rpc.com',
-    explorer: 'https://zkevm.polygonscan.com',
-    networkId: 1, // AggLayer network ID
-  },
   AMOY: {
     id: 80002,
     name: 'Polygon Amoy',
     icon: '🟣',
     rpcUrl: 'https://rpc-amoy.polygon.technology',
     explorer: 'https://amoy.polygonscan.com',
-    networkId: 2, // AggLayer network ID
-  },
-  CARDONA: {
-    id: 2442,
-    name: 'Cardona zkEVM',
-    icon: '🔵',
-    rpcUrl: 'https://rpc.cardona.zkevm-rpc.com',
-    explorer: 'https://cardona-zkevm.polygonscan.com',
-    networkId: 1, // AggLayer network ID
+    networkId: 2,
   },
 } as const;
 
-// Contract addresses (to be populated after deployment)
+// Deployed contract addresses on Polygon Amoy
 export const CONTRACTS = {
-  // Mainnet
-  MAINNET: {
-    ZAP_SENDER: '0x...',
-    ZAP_RECEIVER: '0x...',
-    MOCK_POOL: '0x...',
-    USDC: '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174', // USDC on Polygon PoS
-    BRIDGE: '0x...',
+  MockUSDC: '0x52e5E849e23C763be6A1BdB509f11Da1c212e7a2' as `0x${string}`,
+  MockWETH: '0xf2a2Ff159744C7Fc9b06cB52c5e06a63536956fC' as `0x${string}`,
+  ZapLP: '0x828fcF4603c201844fdD2DE6D00E76E2097e9f11' as `0x${string}`,
+  MockPool: '0x9CC0D4B6f3cF20a8c541C716BF8646c9d562373a' as `0x${string}`,
+  ZapSender: '0xE78E6788807c8C3Dbf3d06711d8C525a3C04C474' as `0x${string}`,
+  ZapReceiver: '0x0487348876b6cA34F3CCF1459386f2D6e638be8c' as `0x${string}`,
+  Bridge: '0x528e26b25a34a4A5d0dbDa1d57D318153d2ED582' as `0x${string}`,
+} as const;
+
+// Token configurations
+export const TOKENS = {
+  USDC: {
+    address: CONTRACTS.MockUSDC,
+    symbol: 'USDC',
+    name: 'Mock USDC',
+    decimals: 6,
+    icon: '💵',
   },
-  // Testnet
-  TESTNET: {
-    ZAP_SENDER: '0x...', // Deployed on Amoy
-    ZAP_RECEIVER: '0x...', // Deployed on Cardona
-    MOCK_POOL: '0x...', // Deployed on Cardona
-    USDC_AMOY: '0x41E94Eb019C0762f9Bfcf9Fb1E58725BfB0e7582',
-    USDC_CARDONA: '0x37eAA0eF3549a5bB7D431be78a3D99BD0d7B5Cd5',
-    BRIDGE_AMOY: '0x528e26b25a34a4A5d0dbDa1d57D318153d2ED582',
-    BRIDGE_CARDONA: '0x528e26b25a34a4A5d0dbDa1d57D318153d2ED582',
+  WETH: {
+    address: CONTRACTS.MockWETH,
+    symbol: 'WETH',
+    name: 'Mock WETH',
+    decimals: 18,
+    icon: '💎',
+  },
+  ZapLP: {
+    address: CONTRACTS.ZapLP,
+    symbol: 'zapLP',
+    name: 'AggZap LP Token',
+    decimals: 18,
+    icon: '🔮',
   },
 } as const;
 
-// Vault definitions
+// Vault definitions with real contract addresses
 export interface Vault {
   id: string;
   name: string;
   description: string;
   apy: number;
-  tvl: string;
-  token: string;
-  tokenIcon: string;
-  tokenAddress: string;
+  token: 'USDC' | 'WETH';
   risk: 'Low' | 'Medium' | 'High';
   protocol: string;
-  sourceNetwork: keyof typeof NETWORKS;
-  destinationNetwork: keyof typeof NETWORKS;
-  poolAddress: string;
+  poolAddress: `0x${string}`;
   featured?: boolean;
+  trending?: boolean;
 }
 
 export const VAULTS: Vault[] = [
   {
-    id: 'stable-yield-1',
-    name: 'Stablecoin Yield Vault',
-    description: 'Earn yield on USDC across multiple DeFi protocols',
+    id: 'usdc-stable-yield',
+    name: 'USDC Stable Yield',
+    description: 'Earn stable yield on USDC through cross-chain DeFi strategies powered by Polygon AggLayer.',
     apy: 8.5,
-    tvl: '$4.2M',
     token: 'USDC',
-    tokenIcon: '💵',
-    tokenAddress: CONTRACTS.TESTNET.USDC_AMOY,
     risk: 'Low',
-    protocol: 'Aave + Compound',
-    sourceNetwork: 'AMOY',
-    destinationNetwork: 'CARDONA',
-    poolAddress: CONTRACTS.TESTNET.MOCK_POOL,
+    protocol: 'AggZap Pool',
+    poolAddress: CONTRACTS.MockPool,
     featured: true,
   },
-  // Add more vaults as needed
+  {
+    id: 'weth-yield',
+    name: 'WETH Yield Vault',
+    description: 'Maximize your ETH holdings with optimized yield strategies across the Polygon ecosystem.',
+    apy: 5.2,
+    token: 'WETH',
+    risk: 'Low',
+    protocol: 'AggZap Pool',
+    poolAddress: CONTRACTS.MockPool,
+  },
+  {
+    id: 'usdc-boosted',
+    name: 'USDC Boosted',
+    description: 'Enhanced stablecoin yields using leveraged lending strategies. Medium risk for higher returns.',
+    apy: 12.5,
+    token: 'USDC',
+    risk: 'Medium',
+    protocol: 'AggZap Pool',
+    poolAddress: CONTRACTS.MockPool,
+    trending: true,
+  },
+  {
+    id: 'weth-delta',
+    name: 'ETH Delta Neutral',
+    description: 'Market-neutral strategy capturing funding rates while minimizing directional exposure.',
+    apy: 15.2,
+    token: 'WETH',
+    risk: 'Medium',
+    protocol: 'AggZap Pool',
+    poolAddress: CONTRACTS.MockPool,
+  },
+  {
+    id: 'usdc-aggressive',
+    name: 'USDC Aggressive',
+    description: 'High-yield stablecoin vault using recursive leverage. Higher risk for maximum returns.',
+    apy: 22.5,
+    token: 'USDC',
+    risk: 'High',
+    protocol: 'AggZap Pool',
+    poolAddress: CONTRACTS.MockPool,
+  },
+  {
+    id: 'weth-options',
+    name: 'ETH Options Vault',
+    description: 'Generate premium income through automated covered call strategies on ETH.',
+    apy: 28.0,
+    token: 'WETH',
+    risk: 'High',
+    protocol: 'AggZap Pool',
+    poolAddress: CONTRACTS.MockPool,
+    trending: true,
+  },
 ];
-
-// Helper function to get bridge address for a network
-export function getBridgeAddress(network: keyof typeof NETWORKS): string {
-  switch (network) {
-    case 'AMOY':
-      return CONTRACTS.TESTNET.BRIDGE_AMOY;
-    case 'CARDONA':
-      return CONTRACTS.TESTNET.BRIDGE_CARDONA;
-    default:
-      return CONTRACTS.MAINNET.BRIDGE;
-  }
-}
 
 // Helper function to format address
 export function formatAddress(address: string): string {
@@ -122,4 +143,14 @@ export function formatAmount(amount: string | number, decimals: number = 2): str
     return `${(num / 1000).toFixed(decimals)}K`;
   }
   return num.toFixed(decimals);
+}
+
+// Get explorer URL for address
+export function getExplorerUrl(address: string, type: 'address' | 'tx' = 'address'): string {
+  return `${NETWORKS.AMOY.explorer}/${type}/${address}`;
+}
+
+// Get explorer URL for transaction
+export function getTxExplorerUrl(txHash: string): string {
+  return `${NETWORKS.AMOY.explorer}/tx/${txHash}`;
 }

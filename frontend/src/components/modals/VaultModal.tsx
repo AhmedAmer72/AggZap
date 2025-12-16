@@ -2,29 +2,36 @@
 
 import { motion, AnimatePresence } from 'framer-motion';
 import { useState, useEffect } from 'react';
-import { X, ArrowRight, Loader2, CheckCircle2, AlertCircle, Zap, Shield, ExternalLink } from 'lucide-react';
+import { X, ArrowRight, Loader2, CheckCircle2, AlertCircle, Zap, Shield, ExternalLink, Coins } from 'lucide-react';
 import { useAccount } from 'wagmi';
+import { parseUnits } from 'viem';
 import { ZapProgress } from '@/components/ui/ZapProgress';
+import { CONTRACTS, TOKENS, getTxExplorerUrl, type Vault } from '@/lib/config';
 
-interface Vault {
-  id: string;
+// Token type definition
+type TokenConfig = {
+  address: `0x${string}`;
+  symbol: string;
   name: string;
-  description: string;
-  apy: number;
-  tvl: string;
-  token: string;
-  tokenIcon: string;
-  risk: 'Low' | 'Medium' | 'High';
-  protocol: string;
-  featured?: boolean;
-}
+  decimals: number;
+  icon: string;
+};
+import { 
+  useUSDCBalance, 
+  useWETHBalance, 
+  useLPBalance,
+  useTokenAllowance,
+  useApproveToken,
+  usePoolDeposit,
+  useMintTokens
+} from '@/hooks/useContracts';
 
 interface VaultModalProps {
   vault: Vault;
   onClose: () => void;
 }
 
-type ZapStep = 'input' | 'confirm' | 'zapping' | 'success' | 'error';
+type ZapStep = 'input' | 'approving' | 'depositing' | 'success' | 'error';
 
 const backdropVariants = {
   hidden: { opacity: 0 },
@@ -33,9 +40,9 @@ const backdropVariants = {
 
 const modalVariants = {
   hidden: { opacity: 0, scale: 0.95, y: 20 },
-  visible: { 
-    opacity: 1, 
-    scale: 1, 
+  visible: {
+    opacity: 1,
+    scale: 1,
     y: 0,
     transition: {
       type: 'spring',
@@ -43,9 +50,9 @@ const modalVariants = {
       damping: 30,
     }
   },
-  exit: { 
-    opacity: 0, 
-    scale: 0.95, 
+  exit: {
+    opacity: 0,
+    scale: 0.95,
     y: 20,
     transition: { duration: 0.2 }
   },
@@ -55,36 +62,127 @@ export function VaultModal({ vault, onClose }: VaultModalProps) {
   const { isConnected, address } = useAccount();
   const [amount, setAmount] = useState('');
   const [step, setStep] = useState<ZapStep>('input');
-  const [currentZapStep, setCurrentZapStep] = useState(0);
+  const [txHash, setTxHash] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string>('');
 
-  // Simulate zapping process
+  // Get token config based on vault
+  const token = vault.token === 'USDC' ? TOKENS.USDC : TOKENS.WETH;
+  const tokenAddress = token.address;
+  const decimals = token.decimals;
+
+  // Hooks for balances
+  const { balance: usdcBalance, refetch: refetchUsdc } = useUSDCBalance();
+  const { balance: wethBalance, refetch: refetchWeth } = useWETHBalance();
+  const { balance: lpBalance, refetch: refetchLp } = useLPBalance();
+  
+  const balance = vault.token === 'USDC' ? usdcBalance : wethBalance;
+
+  // Allowance hook
+  const { allowance, refetch: refetchAllowance } = useTokenAllowance(tokenAddress, CONTRACTS.MockPool);
+
+  // Approve hook
+  const { 
+    approve, 
+    isPending: isApproving, 
+    isConfirming: isApprovalConfirming, 
+    isSuccess: isApprovalSuccess,
+    error: approvalError,
+    reset: resetApproval 
+  } = useApproveToken();
+
+  // Deposit hook
+  const { 
+    deposit, 
+    hash: depositHash,
+    isPending: isDepositing, 
+    isConfirming: isDepositConfirming, 
+    isSuccess: isDepositSuccess,
+    error: depositError,
+    reset: resetDeposit 
+  } = usePoolDeposit();
+
+  // Mint hook (for getting test tokens)
+  const { 
+    mintUSDC, 
+    mintWETH, 
+    isPending: isMinting,
+    isSuccess: isMintSuccess 
+  } = useMintTokens();
+
+  // Handle approval success -> proceed to deposit
   useEffect(() => {
-    if (step === 'zapping') {
-      const timer = setInterval(() => {
-        setCurrentZapStep(prev => {
-          if (prev >= 4) {
-            clearInterval(timer);
-            setTimeout(() => setStep('success'), 500);
-            return prev;
-          }
-          return prev + 1;
-        });
-      }, 1500);
-      return () => clearInterval(timer);
+    if (isApprovalSuccess && step === 'approving') {
+      refetchAllowance();
+      setStep('depositing');
+      // Execute deposit after approval
+      deposit(tokenAddress, amount, decimals);
     }
-  }, [step]);
+  }, [isApprovalSuccess, step]);
 
-  const handleDeposit = () => {
+  // Handle deposit success
+  useEffect(() => {
+    if (isDepositSuccess && depositHash) {
+      setTxHash(depositHash);
+      setStep('success');
+      // Refetch balances
+      refetchUsdc();
+      refetchWeth();
+      refetchLp();
+    }
+  }, [isDepositSuccess, depositHash]);
+
+  // Handle errors
+  useEffect(() => {
+    if (approvalError) {
+      setErrorMessage(approvalError.message || 'Approval failed');
+      setStep('error');
+    }
+    if (depositError) {
+      setErrorMessage(depositError.message || 'Deposit failed');
+      setStep('error');
+    }
+  }, [approvalError, depositError]);
+
+  // Refetch balances after mint
+  useEffect(() => {
+    if (isMintSuccess) {
+      refetchUsdc();
+      refetchWeth();
+    }
+  }, [isMintSuccess]);
+
+  const handleDeposit = async () => {
     if (!amount || parseFloat(amount) <= 0) return;
-    setStep('confirm');
+    
+    const amountParsed = parseUnits(amount, decimals);
+    
+    // Check if we need approval
+    if (allowance < amountParsed) {
+      setStep('approving');
+      await approve(tokenAddress, CONTRACTS.MockPool, amountParsed);
+    } else {
+      // Already approved, go straight to deposit
+      setStep('depositing');
+      await deposit(tokenAddress, amount, decimals);
+    }
   };
 
-  const handleConfirm = () => {
-    setStep('zapping');
-    setCurrentZapStep(0);
+  const handleRetry = () => {
+    resetApproval();
+    resetDeposit();
+    setStep('input');
+    setErrorMessage('');
   };
 
-  const estimatedReceive = amount ? (parseFloat(amount) * 0.999).toFixed(2) : '0';
+  const handleMint = async () => {
+    if (vault.token === 'USDC') {
+      await mintUSDC('1000');
+    } else {
+      await mintWETH('1');
+    }
+  };
+
+  const estimatedLP = amount ? (parseFloat(amount) * (vault.token === 'USDC' ? 1 : 1)).toFixed(4) : '0';
   const protocolFee = amount ? (parseFloat(amount) * 0.001).toFixed(4) : '0';
 
   return (
@@ -95,7 +193,7 @@ export function VaultModal({ vault, onClose }: VaultModalProps) {
         animate="visible"
         exit="hidden"
         onClick={onClose}
-        className="fixed inset-0 z-50 modal-backdrop flex items-center justify-center p-4"
+        className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
       >
         <motion.div
           variants={modalVariants}
@@ -103,24 +201,24 @@ export function VaultModal({ vault, onClose }: VaultModalProps) {
           animate="visible"
           exit="exit"
           onClick={(e) => e.stopPropagation()}
-          className="w-full max-w-lg glass-strong rounded-3xl overflow-hidden"
+          className="w-full max-w-lg bg-gradient-to-b from-gray-900 to-black border border-white/10 rounded-3xl overflow-hidden shadow-2xl"
         >
           {/* Header */}
-          <div className="flex items-center justify-between p-6 border-b border-dark-800">
+          <div className="flex items-center justify-between p-6 border-b border-white/10">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-dark-800 to-dark-900 flex items-center justify-center text-xl">
-                {vault.tokenIcon}
+              <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-purple-500/20 to-cyan-500/20 border border-white/10 flex items-center justify-center text-2xl">
+                {token.icon}
               </div>
               <div>
                 <h2 className="font-semibold text-white">{vault.name}</h2>
-                <p className="text-xs text-dark-400">{vault.protocol}</p>
+                <p className="text-xs text-gray-400">{vault.protocol}</p>
               </div>
             </div>
             <button
               onClick={onClose}
-              className="p-2 hover:bg-dark-800 rounded-lg transition-colors"
+              className="p-2 hover:bg-white/10 rounded-lg transition-colors"
             >
-              <X className="w-5 h-5 text-dark-400" />
+              <X className="w-5 h-5 text-gray-400" />
             </button>
           </div>
 
@@ -129,31 +227,34 @@ export function VaultModal({ vault, onClose }: VaultModalProps) {
             {step === 'input' && (
               <InputStep
                 vault={vault}
+                token={token}
                 amount={amount}
                 setAmount={setAmount}
-                estimatedReceive={estimatedReceive}
+                balance={balance}
+                estimatedLP={estimatedLP}
                 protocolFee={protocolFee}
                 isConnected={isConnected}
                 onDeposit={handleDeposit}
+                onMint={handleMint}
+                isMinting={isMinting}
               />
             )}
 
-            {step === 'confirm' && (
-              <ConfirmStep
-                vault={vault}
-                amount={amount}
-                estimatedReceive={estimatedReceive}
-                protocolFee={protocolFee}
-                onConfirm={handleConfirm}
-                onBack={() => setStep('input')}
+            {step === 'approving' && (
+              <ProcessingStep
+                title="Approving Token"
+                description={`Please confirm the approval in your wallet to allow the pool to spend your ${vault.token}.`}
+                isWaiting={isApproving}
+                isConfirming={isApprovalConfirming}
               />
             )}
 
-            {step === 'zapping' && (
-              <ZappingStep
-                vault={vault}
-                amount={amount}
-                currentStep={currentZapStep}
+            {step === 'depositing' && (
+              <ProcessingStep
+                title="Depositing to Pool"
+                description={`Depositing ${amount} ${vault.token} into the vault. Please confirm in your wallet.`}
+                isWaiting={isDepositing}
+                isConfirming={isDepositConfirming}
               />
             )}
 
@@ -161,14 +262,17 @@ export function VaultModal({ vault, onClose }: VaultModalProps) {
               <SuccessStep
                 vault={vault}
                 amount={amount}
-                estimatedReceive={estimatedReceive}
+                estimatedLP={estimatedLP}
+                txHash={txHash}
+                lpBalance={lpBalance}
                 onClose={onClose}
               />
             )}
 
             {step === 'error' && (
               <ErrorStep
-                onRetry={() => setStep('input')}
+                message={errorMessage}
+                onRetry={handleRetry}
                 onClose={onClose}
               />
             )}
@@ -180,23 +284,33 @@ export function VaultModal({ vault, onClose }: VaultModalProps) {
 }
 
 // Input Step Component
-function InputStep({ 
-  vault, 
-  amount, 
-  setAmount, 
-  estimatedReceive, 
+function InputStep({
+  vault,
+  token,
+  amount,
+  setAmount,
+  balance,
+  estimatedLP,
   protocolFee,
   isConnected,
-  onDeposit 
+  onDeposit,
+  onMint,
+  isMinting,
 }: {
   vault: Vault;
+  token: TokenConfig;
   amount: string;
   setAmount: (val: string) => void;
-  estimatedReceive: string;
+  balance: string;
+  estimatedLP: string;
   protocolFee: string;
   isConnected: boolean;
   onDeposit: () => void;
+  onMint: () => void;
+  isMinting: boolean;
 }) {
+  const hasBalance = parseFloat(balance) > 0;
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
@@ -204,18 +318,30 @@ function InputStep({
       transition={{ duration: 0.3 }}
     >
       {/* APY Banner */}
-      <div className="bg-gradient-to-r from-success-500/10 to-success-500/5 rounded-xl p-4 mb-6 border border-success-500/20">
+      <div className="bg-gradient-to-r from-green-500/10 to-emerald-500/5 rounded-xl p-4 mb-6 border border-green-500/20">
         <div className="flex items-center justify-between">
-          <span className="text-dark-300">Current APY</span>
-          <span className="text-2xl font-bold text-success-400">{vault.apy}%</span>
+          <span className="text-gray-300">Current APY</span>
+          <span className="text-2xl font-bold text-green-400">{vault.apy}%</span>
         </div>
       </div>
 
       {/* Input */}
       <div className="mb-6">
         <div className="flex items-center justify-between mb-2">
-          <label className="text-sm text-dark-400">Deposit Amount</label>
-          <span className="text-xs text-dark-500">Balance: 1,234.56 {vault.token}</span>
+          <label className="text-sm text-gray-400">Deposit Amount</label>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-gray-500">Balance: {parseFloat(balance).toFixed(2)} {vault.token}</span>
+            {!hasBalance && (
+              <button
+                onClick={onMint}
+                disabled={isMinting}
+                className="flex items-center gap-1 text-xs text-purple-400 hover:text-purple-300 disabled:opacity-50"
+              >
+                {isMinting ? <Loader2 className="w-3 h-3 animate-spin" /> : <Coins className="w-3 h-3" />}
+                Get Test Tokens
+              </button>
+            )}
+          </div>
         </div>
         <div className="relative">
           <input
@@ -223,42 +349,41 @@ function InputStep({
             value={amount}
             onChange={(e) => setAmount(e.target.value)}
             placeholder="0.00"
-            className="w-full input-glow text-2xl font-semibold pr-24"
+            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-4 text-2xl font-semibold text-white pr-24 focus:outline-none focus:border-purple-500/50 transition-colors"
           />
           <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
-            <button 
-              onClick={() => setAmount('1234.56')}
-              className="text-xs text-accent-400 hover:text-accent-300"
+            <button
+              onClick={() => setAmount(balance)}
+              className="text-xs text-purple-400 hover:text-purple-300 font-medium"
             >
               MAX
             </button>
-            <span className="text-dark-400 font-medium">{vault.token}</span>
+            <span className="text-gray-400 font-medium">{vault.token}</span>
           </div>
         </div>
       </div>
 
       {/* Summary */}
-      <div className="space-y-3 mb-6 p-4 bg-dark-900/50 rounded-xl">
+      <div className="space-y-3 mb-6 p-4 bg-white/5 rounded-xl border border-white/5">
         <div className="flex items-center justify-between text-sm">
-          <span className="text-dark-400">You will receive</span>
-          <span className="text-white font-medium">{estimatedReceive} zapLP</span>
+          <span className="text-gray-400">You will receive</span>
+          <span className="text-white font-medium">{estimatedLP} zapLP</span>
         </div>
         <div className="flex items-center justify-between text-sm">
-          <span className="text-dark-400">Protocol fee (0.1%)</span>
-          <span className="text-dark-300">{protocolFee} {vault.token}</span>
+          <span className="text-gray-400">Protocol fee (0.1%)</span>
+          <span className="text-gray-300">{protocolFee} {vault.token}</span>
         </div>
         <div className="flex items-center justify-between text-sm">
-          <span className="text-dark-400">Destination</span>
-          <span className="text-accent-400">Polygon zkEVM</span>
+          <span className="text-gray-400">Network</span>
+          <span className="text-purple-400">Polygon Amoy</span>
         </div>
       </div>
 
       {/* Security Note */}
-      <div className="flex items-start gap-3 p-3 bg-dark-900/30 rounded-lg mb-6">
-        <Shield className="w-5 h-5 text-accent-400 flex-shrink-0 mt-0.5" />
-        <p className="text-xs text-dark-400">
-          Your funds are secured by the Polygon AggLayer. The bridgeAndCall() operation is atomic - 
-          if anything fails, your funds are returned to your wallet.
+      <div className="flex items-start gap-3 p-3 bg-purple-500/5 rounded-lg mb-6 border border-purple-500/10">
+        <Shield className="w-5 h-5 text-purple-400 flex-shrink-0 mt-0.5" />
+        <p className="text-xs text-gray-400">
+          Your funds are secured by smart contracts on Polygon. All transactions are verified on-chain.
         </p>
       </div>
 
@@ -267,15 +392,17 @@ function InputStep({
         whileHover={{ scale: 1.02 }}
         whileTap={{ scale: 0.98 }}
         onClick={onDeposit}
-        disabled={!isConnected || !amount || parseFloat(amount) <= 0}
-        className="w-full btn-primary disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+        disabled={!isConnected || !amount || parseFloat(amount) <= 0 || parseFloat(amount) > parseFloat(balance)}
+        className="w-full py-4 rounded-xl font-semibold text-white bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all"
       >
         {!isConnected ? (
           'Connect Wallet'
+        ) : parseFloat(amount) > parseFloat(balance) ? (
+          'Insufficient Balance'
         ) : (
           <>
             <Zap className="w-5 h-5" />
-            <span>Zap {amount || '0'} {vault.token}</span>
+            <span>Deposit {amount || '0'} {vault.token}</span>
           </>
         )}
       </motion.button>
@@ -283,128 +410,50 @@ function InputStep({
   );
 }
 
-// Confirm Step Component
-function ConfirmStep({
-  vault,
-  amount,
-  estimatedReceive,
-  protocolFee,
-  onConfirm,
-  onBack,
+// Processing Step Component
+function ProcessingStep({
+  title,
+  description,
+  isWaiting,
+  isConfirming,
 }: {
-  vault: Vault;
-  amount: string;
-  estimatedReceive: string;
-  protocolFee: string;
-  onConfirm: () => void;
-  onBack: () => void;
+  title: string;
+  description: string;
+  isWaiting: boolean;
+  isConfirming: boolean;
 }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
+      className="py-8 text-center"
     >
-      <div className="text-center mb-6">
-        <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-accent-500/20 flex items-center justify-center">
-          <Zap className="w-8 h-8 text-accent-400" />
-        </div>
-        <h3 className="text-xl font-semibold text-white mb-2">Confirm Zap</h3>
-        <p className="text-dark-400">Review your cross-chain deposit</p>
+      <motion.div
+        animate={{ rotate: 360 }}
+        transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+        className="w-16 h-16 mx-auto mb-6 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center"
+      >
+        <Loader2 className="w-8 h-8 text-white" />
+      </motion.div>
+      
+      <h3 className="text-xl font-semibold text-white mb-2">{title}</h3>
+      <p className="text-gray-400 mb-6">{description}</p>
+      
+      <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
+        {isWaiting && (
+          <>
+            <div className="w-2 h-2 bg-yellow-500 rounded-full animate-pulse" />
+            <span>Waiting for wallet confirmation...</span>
+          </>
+        )}
+        {isConfirming && (
+          <>
+            <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse" />
+            <span>Confirming on blockchain...</span>
+          </>
+        )}
       </div>
-
-      {/* Flow Visualization */}
-      <div className="glass rounded-xl p-4 mb-6">
-        <div className="flex items-center justify-between">
-          <div className="text-center">
-            <p className="text-sm text-dark-400 mb-1">From</p>
-            <p className="font-semibold text-white">Polygon PoS</p>
-            <p className="text-lg font-bold text-accent-400">{amount} {vault.token}</p>
-          </div>
-          <div className="flex-1 mx-4">
-            <div className="h-0.5 bg-gradient-to-r from-accent-500 to-cyan-500 relative">
-              <motion.div
-                animate={{ x: ['0%', '100%'] }}
-                transition={{ duration: 1.5, repeat: Infinity }}
-                className="absolute inset-y-0 w-1/4 bg-white/50"
-              />
-            </div>
-          </div>
-          <div className="text-center">
-            <p className="text-sm text-dark-400 mb-1">To</p>
-            <p className="font-semibold text-white">zkEVM</p>
-            <p className="text-lg font-bold text-success-400">{estimatedReceive} zapLP</p>
-          </div>
-        </div>
-      </div>
-
-      {/* Transaction Details */}
-      <div className="space-y-2 mb-6 text-sm">
-        <div className="flex justify-between">
-          <span className="text-dark-400">Protocol Fee</span>
-          <span className="text-white">{protocolFee} {vault.token}</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-dark-400">Estimated Time</span>
-          <span className="text-white">~30 seconds</span>
-        </div>
-        <div className="flex justify-between">
-          <span className="text-dark-400">Destination Vault</span>
-          <span className="text-white">{vault.name}</span>
-        </div>
-      </div>
-
-      {/* Buttons */}
-      <div className="flex gap-3">
-        <button
-          onClick={onBack}
-          className="flex-1 px-6 py-3 glass rounded-xl font-medium text-dark-300 hover:text-white transition-colors"
-        >
-          Back
-        </button>
-        <motion.button
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          onClick={onConfirm}
-          className="flex-1 btn-primary"
-        >
-          <span>Confirm Zap</span>
-        </motion.button>
-      </div>
-    </motion.div>
-  );
-}
-
-// Zapping Step Component
-function ZappingStep({
-  vault,
-  amount,
-  currentStep,
-}: {
-  vault: Vault;
-  amount: string;
-  currentStep: number;
-}) {
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
-      className="py-4"
-    >
-      <div className="text-center mb-8">
-        <motion.div
-          animate={{ rotate: 360 }}
-          transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
-          className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-accent-500 to-primary-500 flex items-center justify-center"
-        >
-          <Zap className="w-8 h-8 text-white" />
-        </motion.div>
-        <h3 className="text-xl font-semibold text-white mb-2">Zapping in Progress</h3>
-        <p className="text-dark-400">Cross-chain magic happening...</p>
-      </div>
-
-      <ZapProgress currentStep={currentStep} amount={amount} token={vault.token} />
     </motion.div>
   );
 }
@@ -413,12 +462,16 @@ function ZappingStep({
 function SuccessStep({
   vault,
   amount,
-  estimatedReceive,
+  estimatedLP,
+  txHash,
+  lpBalance,
   onClose,
 }: {
   vault: Vault;
   amount: string;
-  estimatedReceive: string;
+  estimatedLP: string;
+  txHash: string | null;
+  lpBalance: string;
   onClose: () => void;
 }) {
   return (
@@ -432,41 +485,52 @@ function SuccessStep({
         initial={{ scale: 0 }}
         animate={{ scale: 1 }}
         transition={{ type: 'spring', delay: 0.2 }}
-        className="w-20 h-20 mx-auto mb-6 rounded-full bg-success-500/20 flex items-center justify-center"
+        className="w-20 h-20 mx-auto mb-6 rounded-full bg-green-500/20 flex items-center justify-center"
       >
-        <CheckCircle2 className="w-10 h-10 text-success-400" />
+        <CheckCircle2 className="w-10 h-10 text-green-400" />
       </motion.div>
 
-      <h3 className="text-2xl font-bold text-white mb-2">Zap Successful! 🎉</h3>
-      <p className="text-dark-400 mb-6">Your funds are now earning yield on zkEVM</p>
+      <h3 className="text-2xl font-bold text-white mb-2">Deposit Successful! 🎉</h3>
+      <p className="text-gray-400 mb-6">Your funds are now earning yield</p>
 
-      <div className="glass rounded-xl p-4 mb-6">
+      <div className="bg-white/5 rounded-xl p-4 mb-6 border border-white/10">
         <div className="flex justify-between items-center mb-2">
-          <span className="text-dark-400">Deposited</span>
+          <span className="text-gray-400">Deposited</span>
           <span className="font-semibold text-white">{amount} {vault.token}</span>
         </div>
         <div className="flex justify-between items-center mb-2">
-          <span className="text-dark-400">Received</span>
-          <span className="font-semibold text-success-400">{estimatedReceive} zapLP</span>
+          <span className="text-gray-400">Received</span>
+          <span className="font-semibold text-green-400">{estimatedLP} zapLP</span>
+        </div>
+        <div className="flex justify-between items-center mb-2">
+          <span className="text-gray-400">Your LP Balance</span>
+          <span className="font-semibold text-purple-400">{parseFloat(lpBalance).toFixed(4)} zapLP</span>
         </div>
         <div className="flex justify-between items-center">
-          <span className="text-dark-400">Earning APY</span>
-          <span className="font-semibold text-accent-400">{vault.apy}%</span>
+          <span className="text-gray-400">Earning APY</span>
+          <span className="font-semibold text-cyan-400">{vault.apy}%</span>
         </div>
       </div>
 
       <div className="flex gap-3">
-        <button className="flex-1 px-6 py-3 glass rounded-xl font-medium text-dark-300 hover:text-white transition-colors flex items-center justify-center gap-2">
-          <ExternalLink className="w-4 h-4" />
-          View on Explorer
-        </button>
+        {txHash && (
+          <a
+            href={getTxExplorerUrl(txHash)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex-1 px-6 py-3 bg-white/5 rounded-xl font-medium text-gray-300 hover:text-white transition-colors flex items-center justify-center gap-2 border border-white/10"
+          >
+            <ExternalLink className="w-4 h-4" />
+            View on Explorer
+          </a>
+        )}
         <motion.button
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
           onClick={onClose}
-          className="flex-1 btn-primary"
+          className="flex-1 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-purple-600 to-pink-600"
         >
-          <span>Done</span>
+          Done
         </motion.button>
       </div>
     </motion.div>
@@ -475,12 +539,17 @@ function SuccessStep({
 
 // Error Step Component
 function ErrorStep({
+  message,
   onRetry,
   onClose,
 }: {
+  message: string;
   onRetry: () => void;
   onClose: () => void;
 }) {
+  // Truncate error message
+  const shortMessage = message.length > 100 ? message.slice(0, 100) + '...' : message;
+
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.95 }}
@@ -492,15 +561,18 @@ function ErrorStep({
         <AlertCircle className="w-8 h-8 text-red-400" />
       </div>
 
-      <h3 className="text-xl font-semibold text-white mb-2">Zap Failed</h3>
-      <p className="text-dark-400 mb-6">
-        Don't worry - your funds are safe. The transaction was reverted.
+      <h3 className="text-xl font-semibold text-white mb-2">Transaction Failed</h3>
+      <p className="text-gray-400 mb-2">
+        Don't worry - your funds are safe.
+      </p>
+      <p className="text-xs text-red-400/80 mb-6 px-4">
+        {shortMessage}
       </p>
 
       <div className="flex gap-3">
         <button
           onClick={onClose}
-          className="flex-1 px-6 py-3 glass rounded-xl font-medium text-dark-300 hover:text-white transition-colors"
+          className="flex-1 px-6 py-3 bg-white/5 rounded-xl font-medium text-gray-300 hover:text-white transition-colors border border-white/10"
         >
           Close
         </button>
@@ -508,9 +580,9 @@ function ErrorStep({
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
           onClick={onRetry}
-          className="flex-1 btn-primary"
+          className="flex-1 py-3 rounded-xl font-semibold text-white bg-gradient-to-r from-purple-600 to-pink-600"
         >
-          <span>Try Again</span>
+          Try Again
         </motion.button>
       </div>
     </motion.div>

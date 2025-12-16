@@ -4,123 +4,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useState } from 'react';
 import { Star, TrendingUp, Zap, Shield, Flame, Sparkles, Lock, ArrowUpRight } from 'lucide-react';
 import { VaultModal } from '@/components/modals/VaultModal';
-
-interface Vault {
-  id: string;
-  name: string;
-  description: string;
-  apy: number;
-  tvl: string;
-  token: string;
-  tokenIcon: string;
-  risk: 'Low' | 'Medium' | 'High';
-  protocol: string;
-  featured?: boolean;
-  trending?: boolean;
-  chainCount?: number;
-}
-
-const vaults: Vault[] = [
-  {
-    id: '1',
-    name: 'USDC Stable Yield',
-    description: 'Low-risk stablecoin lending across Aave & Compound. Perfect for conservative yield seekers.',
-    apy: 5.2,
-    tvl: '$12.4M',
-    token: 'USDC',
-    tokenIcon: '💵',
-    risk: 'Low',
-    protocol: 'Aave + Compound',
-    featured: true,
-    chainCount: 7,
-  },
-  {
-    id: '2',
-    name: 'ETH Liquid Staking',
-    description: 'Earn staking rewards while keeping your ETH liquid. Powered by Lido derivatives.',
-    apy: 8.1,
-    tvl: '$8.2M',
-    token: 'ETH',
-    tokenIcon: '💎',
-    risk: 'Low',
-    protocol: 'Lido + Rocket Pool',
-    chainCount: 5,
-  },
-  {
-    id: '3',
-    name: 'Delta Neutral BTC',
-    description: 'Market-neutral strategy capturing funding rates on perpetual exchanges.',
-    apy: 12.5,
-    tvl: '$5.6M',
-    token: 'USDC',
-    tokenIcon: '⚖️',
-    risk: 'Medium',
-    protocol: 'GMX + dYdX',
-    trending: true,
-    chainCount: 4,
-  },
-  {
-    id: '4',
-    name: 'Leveraged USDC',
-    description: 'Amplified stablecoin yields using recursive lending. Higher risk, higher reward.',
-    apy: 18.2,
-    tvl: '$3.2M',
-    token: 'USDC',
-    tokenIcon: '🚀',
-    risk: 'High',
-    protocol: 'Morpho + Euler',
-    chainCount: 3,
-  },
-  {
-    id: '5',
-    name: 'ETH Covered Calls',
-    description: 'Generate premium income by selling call options on your ETH holdings.',
-    apy: 25.4,
-    tvl: '$2.1M',
-    token: 'ETH',
-    tokenIcon: '📈',
-    risk: 'High',
-    protocol: 'Ribbon + Lyra',
-    chainCount: 2,
-  },
-  {
-    id: '6',
-    name: 'POL Ecosystem Yield',
-    description: 'Optimized farming across native Polygon DeFi protocols.',
-    apy: 11.8,
-    tvl: '$4.5M',
-    token: 'POL',
-    tokenIcon: '🟣',
-    risk: 'Medium',
-    protocol: 'QuickSwap + Balancer',
-    chainCount: 1,
-  },
-  {
-    id: '7',
-    name: 'zkEVM Alpha',
-    description: 'Early access to emerging zkEVM protocols. High risk, high potential rewards.',
-    apy: 32.5,
-    tvl: '$890K',
-    token: 'ETH',
-    tokenIcon: '⚡',
-    risk: 'High',
-    protocol: 'Native zkEVM',
-    trending: true,
-    chainCount: 2,
-  },
-  {
-    id: '8',
-    name: 'Real Yield Index',
-    description: 'Diversified exposure to protocols generating real revenue, not emissions.',
-    apy: 14.2,
-    tvl: '$6.8M',
-    token: 'USDC',
-    tokenIcon: '📊',
-    risk: 'Medium',
-    protocol: 'GMX + GNS + SNX',
-    chainCount: 6,
-  },
-];
+import { VAULTS, CONTRACTS, formatAmount, type Vault } from '@/lib/config';
+import { useTotalTVL } from '@/hooks/useContracts';
 
 const riskColors = {
   Low: 'text-green-400 bg-green-400/10 border-green-400/30',
@@ -132,6 +17,11 @@ const riskIcons = {
   Low: Shield,
   Medium: TrendingUp,
   High: Flame,
+};
+
+const tokenIcons: Record<string, string> = {
+  USDC: '💵',
+  WETH: '💎',
 };
 
 const containerVariants = {
@@ -162,24 +52,30 @@ export function VaultGrid() {
   const [activeFilter, setActiveFilter] = useState('All Vaults');
   const [hoveredVault, setHoveredVault] = useState<string | null>(null);
 
+  // Fetch real TVL from contracts
+  const { totalTvlUsd, isLoading: tvlLoading } = useTotalTVL();
+
   const filters = [
     { label: 'All Vaults', icon: Sparkles },
     { label: 'Low Risk', icon: Shield },
     { label: 'Medium Risk', icon: TrendingUp },
     { label: 'High Risk', icon: Flame },
     { label: 'USDC', icon: Lock },
-    { label: 'ETH', icon: Zap },
+    { label: 'WETH', icon: Zap },
   ];
 
-  const filteredVaults = vaults.filter((vault) => {
+  const filteredVaults = VAULTS.filter((vault) => {
     if (activeFilter === 'All Vaults') return true;
     if (activeFilter === 'Low Risk') return vault.risk === 'Low';
     if (activeFilter === 'Medium Risk') return vault.risk === 'Medium';
     if (activeFilter === 'High Risk') return vault.risk === 'High';
     if (activeFilter === 'USDC') return vault.token === 'USDC';
-    if (activeFilter === 'ETH') return vault.token === 'ETH';
+    if (activeFilter === 'WETH') return vault.token === 'WETH';
     return true;
   });
+
+  // Calculate TVL per vault (split evenly for demo)
+  const tvlPerVault = totalTvlUsd / VAULTS.length;
 
   return (
     <section id="vaults" className="py-24 relative overflow-hidden">
@@ -205,7 +101,7 @@ export function VaultGrid() {
             className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-purple-500/10 border border-purple-500/20 mb-6"
           >
             <Zap className="w-4 h-4 text-purple-400" />
-            <span className="text-sm font-medium text-gray-300">Cross-Chain Yield</span>
+            <span className="text-sm font-medium text-gray-300">Live on Polygon Amoy</span>
           </motion.div>
 
           <h2 className="text-4xl md:text-5xl font-bold text-white mb-4">
@@ -215,8 +111,8 @@ export function VaultGrid() {
             </span>
           </h2>
           <p className="text-gray-400 max-w-2xl mx-auto text-lg">
-            Choose from curated vaults across the Polygon ecosystem.
-            Deposit from <span className="text-white font-medium">any chain</span>, we handle the rest.
+            Deposit into real smart contracts on Polygon Amoy testnet.
+            <span className="text-purple-400 font-medium"> TVL: ${tvlLoading ? '...' : formatAmount(totalTvlUsd)}</span>
           </p>
         </motion.div>
 
@@ -258,7 +154,7 @@ export function VaultGrid() {
             initial="hidden"
             animate="visible"
             exit={{ opacity: 0, y: 20 }}
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"
+            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
           >
             {filteredVaults.map((vault) => {
               const RiskIcon = riskIcons[vault.risk];
@@ -315,10 +211,10 @@ export function VaultGrid() {
                           whileHover={{ scale: 1.1, rotate: 5 }}
                           transition={{ type: 'spring', stiffness: 400 }}
                         >
-                          {vault.tokenIcon}
+                          {tokenIcons[vault.token] || '🔮'}
                         </motion.div>
                         <div>
-                          <h3 className="font-semibold text-white group-hover:text-transparent group-hover:bg-gradient-to-r group-hover:from-purple-400 group-hover:to-cyan-400 group-hover:bg-clip-text transition-all text-sm">
+                          <h3 className="font-semibold text-white group-hover:text-transparent group-hover:bg-gradient-to-r group-hover:from-purple-400 group-hover:to-cyan-400 group-hover:bg-clip-text transition-all">
                             {vault.name}
                           </h3>
                           <p className="text-xs text-gray-500">{vault.protocol}</p>
@@ -327,27 +223,25 @@ export function VaultGrid() {
                     </div>
 
                     {/* Description */}
-                    <p className="text-xs text-gray-400 mb-4 line-clamp-2">{vault.description}</p>
+                    <p className="text-sm text-gray-400 mb-4 line-clamp-2">{vault.description}</p>
 
                     {/* Stats */}
-                    <div className="grid grid-cols-3 gap-2 mb-4 p-3 bg-black/20 rounded-xl">
-                      <div className="text-center">
+                    <div className="grid grid-cols-2 gap-3 mb-4">
+                      <div className="p-3 bg-black/20 rounded-xl text-center">
                         <p className="text-xs text-gray-500 mb-1">APY</p>
                         <motion.p
-                          className="text-lg font-bold text-green-400"
+                          className="text-xl font-bold text-green-400"
                           animate={{ scale: hoveredVault === vault.id ? [1, 1.1, 1] : 1 }}
                           transition={{ duration: 0.3 }}
                         >
                           {vault.apy}%
                         </motion.p>
                       </div>
-                      <div className="text-center border-x border-white/5">
+                      <div className="p-3 bg-black/20 rounded-xl text-center">
                         <p className="text-xs text-gray-500 mb-1">TVL</p>
-                        <p className="text-sm font-bold text-white">{vault.tvl}</p>
-                      </div>
-                      <div className="text-center">
-                        <p className="text-xs text-gray-500 mb-1">Chains</p>
-                        <p className="text-sm font-bold text-purple-400">{vault.chainCount || 1}</p>
+                        <p className="text-lg font-bold text-white">
+                          ${tvlLoading ? '...' : formatAmount(tvlPerVault)}
+                        </p>
                       </div>
                     </div>
 
@@ -366,6 +260,12 @@ export function VaultGrid() {
                         Deposit
                         <ArrowUpRight className="w-4 h-4" />
                       </motion.div>
+                    </div>
+
+                    {/* Live indicator */}
+                    <div className="absolute top-4 right-4 flex items-center gap-1.5">
+                      <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                      <span className="text-xs text-gray-500">Live</span>
                     </div>
                   </div>
                 </motion.div>
@@ -391,23 +291,6 @@ export function VaultGrid() {
             </motion.div>
           )}
         </AnimatePresence>
-
-        {/* View All CTA */}
-        <motion.div
-          initial={{ opacity: 0 }}
-          whileInView={{ opacity: 1 }}
-          viewport={{ once: true }}
-          className="text-center mt-12"
-        >
-          <motion.button
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            className="inline-flex items-center gap-2 px-8 py-4 rounded-2xl font-semibold text-white border border-white/20 hover:bg-white/5 transition-colors"
-          >
-            View All Vaults
-            <ArrowUpRight className="w-5 h-5" />
-          </motion.button>
-        </motion.div>
       </div>
 
       {/* Vault Modal */}
